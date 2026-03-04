@@ -4,14 +4,15 @@ import pandas as pd
 
 st.title("NIFTY 500 Closing Price Downloader")
 
-st.write("Download closing prices for all Nifty 500 stocks")
+st.write("Download dataset in format: Date | Ticker | Close")
 
 start_date = st.date_input("Start Date")
 end_date = st.date_input("End Date")
 
 
-# NIFTY 500 TICKERS
+# Example ticker list (replace with full list)
 tickers = [
+
     "360ONE.NS","3MINDIA.NS","ABB.NS","TIPSMUSIC.NS","ACC.NS","ACMESOLAR.NS","AIAENG.NS","APLAPOLLO.NS","AUBANK.NS","AWL.NS","AADHARHFC.NS",
     "AARTIIND.NS","AAVAS.NS","ABBOTINDIA.NS","ACE.NS","ADANIENSOL.NS","ADANIENT.NS","ADANIGREEN.NS","ADANIPORTS.NS","ADANIPOWER.NS","ATGL.NS",
     "ABCAPITAL.NS","ABFRL.NS","ABREL.NS","ABSLAMC.NS","AEGISLOG.NS","AFCONS.NS","AFFLE.NS","AJANTPHARM.NS","AKUMS.NS","APLLTD.NS",
@@ -66,9 +67,9 @@ tickers = [
 ]
 
 
-if st.button("Download Closing Price Dataset"):
+if st.button("Download Dataset"):
 
-    st.write("Fetching data from Yahoo Finance...")
+    st.info("Downloading data from Yahoo Finance...")
 
     ticker_string = " ".join(tickers)
 
@@ -77,7 +78,8 @@ if st.button("Download Closing Price Dataset"):
         start=start_date,
         end=end_date,
         group_by="ticker",
-        threads=True
+        threads=True,
+        progress=False
     )
 
     final_data = []
@@ -85,11 +87,16 @@ if st.button("Download Closing Price Dataset"):
     for ticker in tickers:
 
         try:
-            close = data[ticker]["Close"]
 
-            df = close.reset_index()
+            close_prices = data[ticker]["Close"]
+
+            df = close_prices.reset_index()
 
             df["Ticker"] = ticker
+
+            df.rename(columns={"Close": "Close"}, inplace=True)
+
+            df = df[["Date","Ticker","Close"]]
 
             final_data.append(df)
 
@@ -98,27 +105,30 @@ if st.button("Download Closing Price Dataset"):
 
     result = pd.concat(final_data)
 
-    result = result[["Date","Ticker","Close"]]
+    result = result.sort_values(["Date","Ticker"])
 
-    st.success("Download Complete")
+    st.success("Dataset Ready")
 
     st.dataframe(result)
 
+    # CSV download
     csv = result.to_csv(index=False)
 
     st.download_button(
-        "Download CSV",
-        csv,
-        "nifty500_closing_prices.csv"
+        label="Download CSV",
+        data=csv,
+        file_name="nifty500_closing_prices.csv",
+        mime="text/csv"
     )
 
+    # Excel download
     excel_file = "nifty500_closing_prices.xlsx"
     result.to_excel(excel_file,index=False)
 
     with open(excel_file,"rb") as f:
 
         st.download_button(
-            "Download Excel",
-            f,
-            excel_file
+            label="Download Excel",
+            data=f,
+            file_name=excel_file
         )
