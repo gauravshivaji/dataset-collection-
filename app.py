@@ -1,17 +1,22 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+from io import BytesIO
 
-st.title("NIFTY 500 Closing Price Downloader")
+st.title("NIFTY 500 OHLC Data Downloader")
 
-st.write("Download dataset in format: Date | Ticker | Close")
+st.write("Download dataset in format: Date | Ticker | Open | High | Low | Close")
 
-start_date = st.date_input("Start Date")
-end_date = st.date_input("End Date")
+# Layout for dates
+col1, col2 = st.columns(2)
+with col1:
+    start_date = st.date_input("Start Date")
+with col2:
+    end_date = st.date_input("End Date")
 
-
-# Example ticker list (replace with full list)
+# The ticker list (truncated for readability in this example)
 tickers = [
+    
 
     "360ONE.NS","3MINDIA.NS","ABB.NS","TIPSMUSIC.NS","ACC.NS","ACMESOLAR.NS","AIAENG.NS","APLAPOLLO.NS","AUBANK.NS","AWL.NS","AADHARHFC.NS",
     "AARTIIND.NS","AAVAS.NS","ABBOTINDIA.NS","ACE.NS","ADANIENSOL.NS","ADANIENT.NS","ADANIGREEN.NS","ADANIPORTS.NS","ADANIPOWER.NS","ATGL.NS",
@@ -66,69 +71,60 @@ tickers = [
     "ECLERX.NS",
 ]
 
-
 if st.button("Download Dataset"):
+    st.info("Downloading data from Yahoo Finance... this may take a moment.")
 
-    st.info("Downloading data from Yahoo Finance...")
-
-    ticker_string = " ".join(tickers)
-
+    # 1. Download all data at once
+    # We remove group_by="ticker" to get a MultiIndex header which is easier to batch process
     data = yf.download(
-        ticker_string,
+        tickers,
         start=start_date,
         end=end_date,
-        group_by="ticker",
         threads=True,
         progress=False
     )
 
-    final_data = []
+    if data.empty:
+        st.error("No data found for the selected dates.")
+    else:
+        # 2. Reshape the data from Wide to Long format
+        # This is much faster than a 'for loop' over 500 tickers
+        ohlc = data[['Open', 'High', 'Low', 'Close']]
+        
+        # Stack the Tickers from columns into rows
+        result = ohlc.stack(level=1).reset_index()
+        
+        # Rename columns to match your requirement
+        result.rename(columns={'level_1': 'Ticker'}, inplace=True)
+        
+        # Sort by Date and Ticker
+        result = result.sort_values(["Date", "Ticker"])
+        
+        # Ensure column order
+        result = result[["Date", "Ticker", "Open", "High", "Low", "Close"]]
 
-    for ticker in tickers:
+        st.success(f"Successfully fetched data for {len(result['Ticker'].unique())} tickers.")
+        st.dataframe(result.head(100)) # Show preview
 
-        try:
+        # --- DOWNLOAD SECTION ---
+        
+        # CSV download
+        csv = result.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name="nifty500_ohlc.csv",
+            mime="text/csv"
+        )
 
-            close_prices = data[ticker]["Close"]
-
-            df = close_prices.reset_index()
-
-            df["Ticker"] = ticker
-
-            df.rename(columns={"Close": "Close"}, inplace=True)
-
-            df = df[["Date","Ticker","Close"]]
-
-            final_data.append(df)
-
-        except:
-            pass
-
-    result = pd.concat(final_data)
-
-    result = result.sort_values(["Date","Ticker"])
-
-    st.success("Dataset Ready")
-
-    st.dataframe(result)
-
-    # CSV download
-    csv = result.to_csv(index=False)
-
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name="nifty500_closing_prices.csv",
-        mime="text/csv"
-    )
-
-    # Excel download
-    excel_file = "nifty500_closing_prices.xlsx"
-    result.to_excel(excel_file,index=False)
-
-    with open(excel_file,"rb") as f:
-
+        # Excel download (Using BytesIO to avoid saving files to the server)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            result.to_excel(writer, index=False, sheet_name='OHLC_Data')
+        
         st.download_button(
             label="Download Excel",
-            data=f,
-            file_name=excel_file
+            data=output.getvalue(),
+            file_name="nifty500_ohlc.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
